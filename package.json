@@ -1,0 +1,29 @@
+{
+  "name": "codendeploy",
+  "version": "0.1.0",
+  "description": "Autonomous project scoper, token wizard, and deployment orchestrator",
+  "type": "module",
+  "bin": {
+    "codendeploy": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "tsc && node --env-file=.env dist/index.js",
+    "deploy": "tsc && node --env-file=.env dist/index.js",
+    "harvest": "tsc && node --env-file=.env dist/harvest.js"
+  },
+
+  "keywords": [
+    "autonomous",
+    "deployment",
+    "agent",
+    "cli",
+    "orchestrator"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  }
+}

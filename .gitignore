@@ -1,0 +1,23 @@
+node_modules/
+.env
+.env.*
+!.env.example
+dist/
+*.tmp*
+.DS_Store
+.agents/mcp_config.json
+
+# Local agent collaboration, reflection logs & scratch tools
+user_talks.md
+interesting_talks.md
+recommit_history.mjs
+scratch/
+*.mjs
+*.tsbuildinfo
+DECISIONS.md
+BACKEND_ARCHITECTURE_CHEATSHEET.md
+DEVELOPER_CHEATSHEET.md
+OPEN_SOURCE_RELEASE.md
+ZERO_TRUST.md
+.agents/
+
