@@ -1,0 +1,180 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { ProjectBlueprint } from './types.js';
+import { openInEditor } from './hostProbe.js';
+import { harvestReferenceArchitecture } from './referenceHarvester.js';
+
+export interface PrimeWorkspaceOptions {
+  blueprint: ProjectBlueprint;
+  targetDir: string;
+  repoUrl: string;
+  deployUrl?: string;
+  envKeys: Record<string, string>;
+  openEditor?: boolean;
+}
+
+export interface WorkspacePrimerResult {
+  targetDir: string;
+  readmePath: string;
+  rulesPath: string;
+  envPath: string;
+  mcpConfigPath?: string;
+  referenceArchitecturePath?: string;
+}
+
+/**
+ * Primes an agent-ready workspace with the complete Agent Ignition Kit:
+ * - README.md with architecture & agent ignition prompt
+ * - .agents/rules/ENGINEERING_RULES.md (Shift-left Zero-Trust Invariants)
+ * - .agents/mcp_config.json (Stitch Design MCP bridge)
+ * - .env with verified credentials
+ * - Auto-launches Antigravity IDE into the primed workspace
+ */
+export async function primeAgentWorkspace(options: PrimeWorkspaceOptions): Promise<WorkspacePrimerResult> {
+  const { blueprint, targetDir, repoUrl, deployUrl, envKeys, openEditor = true } = options;
+
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+
+  const agentsDir = path.resolve(targetDir, '.agents');
+  const rulesDir = path.resolve(agentsDir, 'rules');
+  if (!fs.existsSync(rulesDir)) {
+    fs.mkdirSync(rulesDir, { recursive: true });
+  }
+
+  // 1. Generate README.md
+  const readmeContent = `# ${blueprint.projectName}
+
+> ${blueprint.tagline}
+
+${blueprint.plainEnglishSummary}
+
+---
+
+## 🔗 Architecture & Infrastructure
+* **GitHub Repository:** [${repoUrl}](${repoUrl})
+${deployUrl ? `* **Production Edge URL:** [${deployUrl}](${deployUrl})\n` : ''}
+* **Framework:** \`${blueprint.recommendedStack.framework}\`
+* **Styling:** \`${blueprint.recommendedStack.styling}\`
+* **Database & Auth:** \`${blueprint.recommendedStack.database || 'Supabase PostgreSQL'}\`
+* **Hosting:** \`${blueprint.recommendedStack.hosting}\`
+
+---
+
+## ⚡ Core Features to Implement
+${blueprint.coreFeatures.map(f => `- [ ] **${f}**`).join('\n')}
+
+---
+
+## 🤖 Instructions for Antigravity AI Agent
+When you open this project in **Antigravity IDE**:
+1. Inspect the pre-configured credentials in \`.env\`.
+2. Inspect the design tools in \`.agents/mcp_config.json\`.
+3. Strictly follow \`.agents/rules/ENGINEERING_RULES.md\` (always run \`tsc --noEmit\` locally before pushing).
+4. Build the core pages and components iteratively, committing each working milestone to \`main\`.
+`;
+
+  const readmePath = path.resolve(targetDir, 'README.md');
+  fs.writeFileSync(readmePath, readmeContent, 'utf8');
+
+  let referenceArchitecturePath: string | undefined;
+  if (blueprint.referenceRepos && blueprint.referenceRepos.length > 0) {
+    const refDoc = await harvestReferenceArchitecture(blueprint.referenceRepos, envKeys['GITHUB_TOKEN']);
+    if (refDoc) {
+      referenceArchitecturePath = path.resolve(rulesDir, 'REFERENCE_ARCHITECTURE.md');
+      fs.writeFileSync(referenceArchitecturePath, refDoc, 'utf8');
+      console.log(`📚 [Reference Architecture] Harvested patterns into: ${referenceArchitecturePath}`);
+    }
+  }
+
+  // 2. Generate .agents/rules/ENGINEERING_RULES.md
+  let rulesContent = `# Autonomous Engineering Rules & Quality Invariants
+
+## 1. Shift-Left Build Verification (Zero Broken Pushes)
+- ALWAYS run \`npm run build\` or \`npx tsc --noEmit\` locally BEFORE committing to Git.
+- Never push broken TypeScript types to remote \`main\`.
+
+## 2. Environment Invariants
+- NEVER hallucinate or guess credentials. All verified production keys are stored in \`.env\`.
+- Never commit \`.env\` or secret keys to Git (enforce \`.gitignore\`).
+
+## 3. Remote Deployment Debugging
+- If Vercel deployment fails, inspect the deployment events log via the Vercel REST API rather than guessing.
+- Fix compiler and lint errors at the source file.
+
+## 4. UI Aesthetics & Design Tokens
+- If Google Stitch MCP is configured in \`.agents/mcp_config.json\`, use Stitch tools to extract design palettes and layout structures.
+`;
+
+  if (referenceArchitecturePath) {
+    rulesContent += `\n## 5. Reference Architecture Compliance\n- Strictly adhere to patterns extracted in \`.agents/rules/REFERENCE_ARCHITECTURE.md\`.\n- Never spawn OS-level child processes for educational sandbox simulations; use in-memory virtual state engines.\n`;
+  }
+
+  const rulesPath = path.resolve(rulesDir, 'ENGINEERING_RULES.md');
+  fs.writeFileSync(rulesPath, rulesContent, 'utf8');
+
+  // Also write AGENTS.md in project root for universal agent discovery
+  fs.writeFileSync(path.resolve(targetDir, 'AGENTS.md'), rulesContent, 'utf8');
+
+  // 3. Generate .gitignore
+  const gitignoreContent = `node_modules
+.env
+.env*.local
+.next
+dist
+.DS_Store
+*.log
+`;
+  fs.writeFileSync(path.resolve(targetDir, '.gitignore'), gitignoreContent, 'utf8');
+
+  // 4. Generate .env
+  let envFileContent = `# Auto-generated by codendeploy\n`;
+  for (const [k, v] of Object.entries(envKeys)) {
+    if (v && v.trim() !== '') {
+      envFileContent += `${k}=${v.trim()}\n`;
+    }
+  }
+  const envPath = path.resolve(targetDir, '.env');
+  fs.writeFileSync(envPath, envFileContent, 'utf8');
+
+  // 5. Generate .agents/mcp_config.json if Stitch key is present
+  let mcpConfigPath: string | undefined;
+  if (envKeys['STITCH_API_KEY']) {
+    mcpConfigPath = path.resolve(agentsDir, 'mcp_config.json');
+    const mcpConfig = {
+      mcpServers: {
+        stitch: {
+          command: 'npx',
+          args: ['-y', '@google/stitch-mcp'],
+          env: {
+            STITCH_API_KEY: envKeys['STITCH_API_KEY'],
+          },
+        },
+      },
+    };
+    fs.writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2), 'utf8');
+    console.log(`🔌 [MCP Setup] Configured Google Stitch MCP in ${mcpConfigPath}`);
+  }
+
+  console.log(`\n🎉 [Workspace Primed] Ready at: ${targetDir}`);
+  console.log(`   ├─ README.md with agent ignition prompt`);
+  console.log(`   ├─ .agents/rules/ENGINEERING_RULES.md`);
+  console.log(`   ├─ .env with verified cloud credentials`);
+  if (mcpConfigPath) console.log(`   └─ .agents/mcp_config.json (Stitch design tool bridge)`);
+
+  // 6. Launch Antigravity IDE
+  if (openEditor) {
+    console.log(`\n🚀 Launching Antigravity IDE on ${targetDir}...`);
+    openInEditor(targetDir, 'antigravity');
+  }
+
+  return {
+    targetDir,
+    readmePath,
+    rulesPath,
+    envPath,
+    mcpConfigPath,
+    referenceArchitecturePath,
+  };
+}
